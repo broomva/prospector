@@ -1,17 +1,17 @@
 import { Mastra } from '@mastra/core/mastra';
 import { PinoLogger } from '@mastra/loggers';
-import { financialModelingAgent } from './agents/financial-modeling-agent';
-import { financialModelingAgentMcp } from './agents/financial-modeling-agent-mcp';
+// import { financialModelingAgent } from './agents/financial-modeling';
+// import { financialModelingAgentMcp } from './agents/financial-modeling-mcp';
 import { RuntimeContext } from '@mastra/core/runtime-context';
 import { HTTPException } from 'hono/http-exception';
 import { LibSQLStore, LibSQLVector } from '@mastra/libsql';
 import { Composio } from '@composio/core';
 import { MastraProvider } from '@composio/mastra';
-import { prospectorAgent } from './agents/prospect-agent';
+import { prospectorAgent } from './agents/prospector';
 import { LangfuseExporter } from "@mastra/langfuse";
 
 export const mastra = new Mastra({
-  agents: { financialModelingAgent, financialModelingAgentMcp, prospectorAgent },
+  agents: { prospectorAgent },
   storage: new LibSQLStore({
     url: 'file:../../mastra.db',
   }),

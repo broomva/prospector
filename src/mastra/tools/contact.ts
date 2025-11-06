@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { parse } from 'csv-parse/sync';
+import { anthropic } from '@ai-sdk/anthropic';
 import {
   ContactSchema,
   ContactFilterSchema,
@@ -652,5 +653,362 @@ export const getContactDetailsTool = createTool({
     }
 
     return contact;
+  },
+});
+
+/**
+ * Tool: Update contact state and track progression
+ */
+export const updateContactStateTool = createTool({
+  id: 'update-contact-state',
+  description: `Update a contact's state in the prospecting pipeline and track the change.
+
+Use this to record when you:
+- Send an email (NOT_CONTACTED → SENT)
+- Get a response (SENT → REPLIED)
+- Schedule a demo (REPLIED → DEMOED)
+- Email bounces (SENT → BOUNCED)
+
+This creates an audit trail of all contact state changes.`,
+  inputSchema: StateUpdateSchema,
+  outputSchema: z.object({
+    success: z.boolean(),
+    previousState: z.string(),
+    newState: z.string(),
+    message: z.string(),
+  }),
+  execute: async ({ context }) => {
+    const contacts = loadContactsFromCSV();
+    const contact = contacts.find((c) => c.id === context.contactId);
+
+    if (!contact) {
+      return {
+        success: false,
+        previousState: 'UNKNOWN',
+        newState: context.newState,
+        message: `Contact ${context.contactId} not found`,
+      };
+    }
+
+    const previousState = contact.contactState;
+    const timestamp = context.timestamp || new Date().toISOString();
+
+    // Load state tracking
+    const stateData = loadStateTracking();
+
+    // Initialize contact tracking if doesn't exist
+    if (!stateData.contacts[context.contactId]) {
+      stateData.contacts[context.contactId] = {
+        contactId: context.contactId,
+        currentState: previousState,
+        stateHistory: [],
+        interactions: [],
+        lastUpdated: timestamp,
+      };
+    }
+
+    // Add state update to history
+    const stateUpdate: StateUpdate = {
+      contactId: context.contactId,
+      newState: context.newState,
+      note: context.note,
+      metadata: context.metadata,
+      timestamp,
+    };
+
+    stateData.contacts[context.contactId].currentState = context.newState;
+    stateData.contacts[context.contactId].stateHistory.push(stateUpdate);
+    stateData.contacts[context.contactId].lastUpdated = timestamp;
+
+    // Save state tracking
+    saveStateTracking(stateData);
+
+    return {
+      success: true,
+      previousState,
+      newState: context.newState,
+      message: `Updated contact ${context.contactId} from ${previousState} to ${context.newState}`,
+    };
+  },
+});
+
+/**
+ * Tool: Record an interaction with a contact
+ */
+export const recordInteractionTool = createTool({
+  id: 'record-interaction',
+  description: `Record any interaction with a contact for tracking and analysis.
+
+Use this to log:
+- Emails sent/received
+- Calls made
+- LinkedIn messages
+- Meetings scheduled
+- Notes added
+
+This builds a complete interaction history for each contact.`,
+  inputSchema: InteractionSchema,
+  outputSchema: z.object({
+    success: z.boolean(),
+    interactionId: z.string(),
+    message: z.string(),
+  }),
+  execute: async ({ context }) => {
+    const contacts = loadContactsFromCSV();
+    const contact = contacts.find((c) => c.id === context.contactId);
+
+    if (!contact) {
+      return {
+        success: false,
+        interactionId: '',
+        message: `Contact ${context.contactId} not found`,
+      };
+    }
+
+    // Generate interaction ID
+    const interactionId = `int_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const timestamp = context.timestamp || new Date().toISOString();
+
+    // Load state tracking
+    const stateData = loadStateTracking();
+
+    // Initialize contact tracking if doesn't exist
+    if (!stateData.contacts[context.contactId]) {
+      stateData.contacts[context.contactId] = {
+        contactId: context.contactId,
+        currentState: contact.contactState,
+        stateHistory: [],
+        interactions: [],
+        lastUpdated: timestamp,
+      };
+    }
+
+    // Create interaction record
+    const interaction: Interaction = {
+      id: interactionId,
+      contactId: context.contactId,
+      timestamp,
+      type: context.type,
+      subject: context.subject,
+      content: context.content,
+      metadata: context.metadata,
+      previousState: context.previousState,
+      newState: context.newState,
+      previousStage: context.previousStage,
+      newStage: context.newStage,
+      performedBy: context.performedBy,
+      channel: context.channel,
+    };
+
+    // Add interaction to history
+    stateData.contacts[context.contactId].interactions.push(interaction);
+    stateData.contacts[context.contactId].lastUpdated = timestamp;
+
+    // If state changed, update it
+    if (context.newState && context.newState !== stateData.contacts[context.contactId].currentState) {
+      stateData.contacts[context.contactId].currentState = context.newState;
+    }
+
+    // Save state tracking
+    saveStateTracking(stateData);
+
+    return {
+      success: true,
+      interactionId,
+      message: `Recorded ${context.type} interaction for contact ${context.contactId}`,
+    };
+  },
+});
+
+/**
+ * Tool: Get contact history (state changes and interactions)
+ */
+export const getContactHistoryTool = createTool({
+  id: 'get-contact-history',
+  description: `Get the complete history of state changes and interactions for a contact.
+
+Use this to:
+- Review what's been done with a contact
+- Check when last contacted
+- Analyze interaction patterns
+- Plan next steps`,
+  inputSchema: z.object({
+    contactId: z.string().describe('Contact ID to get history for'),
+    includeInteractions: z.boolean().default(true).describe('Include full interaction log'),
+    includeStateHistory: z.boolean().default(true).describe('Include state change history'),
+  }),
+  outputSchema: z.object({
+    contactId: z.string(),
+    currentState: z.string(),
+    stateHistory: z.array(StateUpdateSchema).optional(),
+    interactions: z.array(InteractionSchema).optional(),
+    lastUpdated: z.string(),
+    totalInteractions: z.number(),
+    found: z.boolean(),
+  }),
+  execute: async ({ context }) => {
+    const stateData = loadStateTracking();
+    const tracking = stateData.contacts[context.contactId];
+
+    if (!tracking) {
+      return {
+        contactId: context.contactId,
+        currentState: 'UNKNOWN',
+        stateHistory: [],
+        interactions: [],
+        lastUpdated: new Date().toISOString(),
+        totalInteractions: 0,
+        found: false,
+      };
+    }
+
+    return {
+      contactId: tracking.contactId,
+      currentState: tracking.currentState,
+      stateHistory: context.includeStateHistory ? tracking.stateHistory : undefined,
+      interactions: context.includeInteractions ? tracking.interactions : undefined,
+      lastUpdated: tracking.lastUpdated,
+      totalInteractions: tracking.interactions.length,
+      found: true,
+    };
+  },
+});
+
+/**
+ * Tool: Generate personalized outreach using AI
+ */
+export const generateOutreachTool = createTool({
+  id: 'generate-outreach',
+  description: `Generate personalized outreach messages using AI based on contact data.
+
+The AI analyzes:
+- Contact's role, seniority, company
+- Keywords associated with their work
+- Technologies they use
+- Company industry and size
+- Previous interactions (if any)
+
+And creates tailored messages that:
+- Reference relevant pain points
+- Mention specific technologies/tools
+- Use appropriate tone for their seniority
+- Include compelling CTAs
+
+Use this to create highly personalized outreach at scale.`,
+  inputSchema: OutreachRequestSchema,
+  outputSchema: GeneratedOutreachSchema,
+  execute: async ({ context, mastra }) => {
+    const contacts = loadContactsFromCSV();
+    const contact = contacts.find((c) => c.id === context.contactId);
+
+    if (!contact) {
+      throw new Error(`Contact ${context.contactId} not found`);
+    }
+
+    // Get interaction history
+    const stateData = loadStateTracking();
+    const tracking = stateData.contacts[context.contactId];
+
+    // Build context for AI
+    const contextData = {
+      contact: {
+        name: `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || 'there',
+        title: contact.title,
+        seniority: contact.seniority,
+        company: contact.companyName,
+        industry: contact.industry,
+        companySize: contact.companySizeBucket,
+        location: contact.country,
+      },
+      enrichment: {
+        keywords: contact.keywords?.slice(0, 10) || [], // Top 10 keywords
+        technologies: contact.technologies?.slice(0, 8) || [], // Top 8 technologies
+        funding: contact.totalFunding,
+        linkedIn: contact.linkedinUrl,
+      },
+      history: tracking ? {
+        interactions: tracking.interactions.length,
+        lastContacted: tracking.lastUpdated,
+        currentState: tracking.currentState,
+      } : null,
+    };
+
+    // Generate outreach using AI
+    const prompt = `You are an expert sales outreach specialist for Wedi Pay, a payment orchestration platform focused on LATAM markets.
+
+Generate a ${context.style} ${context.channel} message for this prospect:
+
+PROSPECT INFO:
+Name: ${contextData.contact.name}
+Title: ${contextData.contact.title || 'Unknown'}
+Company: ${contextData.contact.company || 'Unknown'}
+Industry: ${contextData.contact.industry || 'Unknown'}
+Company Size: ${contextData.contact.companySize || 'Unknown'}
+Location: ${contextData.contact.location || 'Unknown'}
+
+ENRICHMENT DATA:
+Keywords: ${contextData.enrichment.keywords.length > 0 ? contextData.enrichment.keywords.join(', ') : 'None'}
+Technologies: ${contextData.enrichment.technologies.length > 0 ? contextData.enrichment.technologies.join(', ') : 'None'}
+Funding: ${contextData.enrichment.funding ? `$${contextData.enrichment.funding.toLocaleString()}` : 'Unknown'}
+
+${contextData.history ? `INTERACTION HISTORY:
+Previous interactions: ${contextData.history.interactions}
+Last contacted: ${contextData.history.lastContacted}
+Current state: ${contextData.history.currentState}` : 'This is a first contact.'}
+
+${context.focus ? `FOCUS AREA: ${context.focus}` : ''}
+
+WEDI PAY VALUE PROP:
+- Payment orchestration for LATAM markets
+- Support for local payment methods
+- Multi-currency processing
+- Simplified integration
+- Reduces payment complexity
+
+INSTRUCTIONS:
+1. ${context.channel === 'email' ? 'Create subject line and email body' : 'Create message'}
+2. Use ${context.style} tone appropriate for ${contextData.contact.seniority || 'their role'}
+3. Reference their specific tech stack or keywords if relevant
+4. ${context.includeCallToAction ? 'Include a clear, specific call-to-action' : 'Keep it informational'}
+5. Keep under ${context.maxLength || 200} words
+6. Be genuine, not salesy
+7. Focus on their pain points, not features
+
+Return a JSON object with:
+- subject (for email) or null
+- message (the body)
+- personalizationUsed (array of strings: which data points you leveraged)
+- reasoning (brief explanation of your approach)
+- suggestedFollowUpDays (number of days before follow-up if no response)`;
+
+    try {
+      const model = anthropic('claude-sonnet-4-5');
+      const { text } = await mastra!.generate({
+        model,
+        prompt,
+        temperature: 0.7,
+        maxTokens: 1000,
+      });
+
+      // Parse AI response
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('AI did not return valid JSON');
+      }
+
+      const result = JSON.parse(jsonMatch[0]);
+
+      return {
+        contactId: context.contactId,
+        subject: result.subject || undefined,
+        message: result.message,
+        personalizationUsed: result.personalizationUsed || [],
+        reasoning: result.reasoning || 'Generated based on contact data',
+        suggestedFollowUpDays: result.suggestedFollowUpDays || 3,
+      };
+    } catch (error) {
+      console.error('Error generating outreach:', error);
+      throw new Error(`Failed to generate outreach: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   },
 });
