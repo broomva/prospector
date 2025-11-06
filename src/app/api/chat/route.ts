@@ -12,7 +12,7 @@ export async function POST(req: Request) {
     const { userId, orgId, orgRole } = await requireOrganization();
 
     // Parse request body
-    const { messages } = await req.json();
+    const { messages, threadId } = await req.json();
 
     // Validate input
     if (!messages || !Array.isArray(messages)) {
@@ -25,12 +25,26 @@ export async function POST(req: Request) {
     // Get the prospector agent from Mastra
     const agent = mastra.getAgent("prospectorAgent");
 
-    // TODO: In the future, you can inject organization context into the agent
-    // This allows the agent to scope its operations to the organization
-    // Example: agent.withContext({ organizationId: orgId, userId })
+    // 🎯 MEMORY CONTEXT INJECTION
+    // Inject organization and user context into the agent's memory system
+    // This enables:
+    // 1. Thread-scoped memory: Each conversation thread maintains its own context
+    // 2. Resource-scoped memory: Organization-level persistence across threads
+    // 3. Working memory: Agent remembers user preferences, goals, and context
+    // 4. Semantic recall: RAG-based retrieval of relevant past conversations
+    //
+    // Memory hierarchy:
+    // - thread: Unique conversation ID (client-generated or default to userId)
+    // - resource: Organization ID (all threads in org share this resource context)
+    const memoryContext = {
+      thread: threadId || `thread-${userId}-${Date.now()}`, // Unique per conversation
+      resource: orgId, // Shared across org's conversations
+    };
 
-    // Stream the agent's response
-    const stream = await agent.stream(messages);
+    // Stream the agent's response with memory context
+    const stream = await agent.stream(messages, {
+      memory: memoryContext,
+    });
 
     // Transform stream into AI SDK format and create UI messages stream
     const uiMessageStream = createUIMessageStream({

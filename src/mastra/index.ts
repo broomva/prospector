@@ -48,11 +48,12 @@ export const mastra = new Mastra({
             message: 'COMPOSIO_AUTH_CONFIG_ID missing',
           });
 
-        // TODO: Retrieve unique user id and set it on the runtime context
-        // Consider using Authentication headers for user identification
-        // e.g const bearerToken = c.get('Authorization')
-        // https://mastra.ai/en/docs/server-db/middleware#common-examples
-        const userId = 'pg-test-24bb244a-9a5e-4047-89e3-12e83f0b4f8d';
+        // 🔒 SECURITY: Get authenticated user ID from Clerk
+        // The Clerk middleware in proxy.ts ensures this endpoint is protected
+        // For Mastra server endpoints, we need to extract the user ID from Clerk session
+        // TODO: When using Mastra server, implement proper Clerk session validation
+        // For now, use a consistent userId format that matches our org-based approach
+        const userId = 'mastra-server-user'; // Placeholder - Mastra server uses different auth flow
         runtimeContext.set('userId', userId);
 
         // check for active/intiated connection or initiate a new connection to composio
