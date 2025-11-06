@@ -2,7 +2,7 @@ import { anthropic } from '@ai-sdk/anthropic';
 import { Agent } from '@mastra/core/agent';
 // import { evaluateResultTool } from '../tools/evaluateResultTool';
 // import { extractLearningsTool } from '../tools/extractLearningsTool';
-import { webSearchTool } from '../tools/web-search';
+// import { webSearchTool } from '../tools/web-search';
 import { webSummarizationAgent } from './web-summary';
 import { learningExtractionAgent } from './learning-extraction';
 import { reportAgent } from './report';
@@ -52,7 +52,7 @@ export const researchAgent = new Agent({
     reportAgent,
   },
   tools: {
-    webSearchTool,
+    // webSearchTool,
     // evaluateResultTool,
     // extractLearningsTool,
   },

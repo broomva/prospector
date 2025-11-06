@@ -24,16 +24,16 @@ import { LazyMotion, MotionConfig, domAnimation } from "motion/react";
 import * as m from "motion/react-m";
 
 import { Button } from "@/components/ui/button";
-import { MarkdownText } from "@/src/components/assistant-ui/markdown-text";
-import { ToolFallback } from "@/src/components/assistant-ui/tool-fallback";
-import { TooltipIconButton } from "@/src/components/assistant-ui/tooltip-icon-button";
+import { MarkdownText } from "@/components/assistant-ui/markdown-text";
+import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
+import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import {
   ComposerAddAttachment,
   ComposerAttachments,
   UserMessageAttachments,
-} from "@/src/components/assistant-ui/attachment";
+} from "@/components/assistant-ui/attachment";
 
-import { cn } from "@/src/lib/utils";
+import { cn } from "@/lib/utils";
 
 export const Thread: FC = () => {
   return (

@@ -1,20 +1,16 @@
-import { openai } from "@ai-sdk/openai";
-import { frontendTools } from "@assistant-ui/react-ai-sdk";
-import { convertToModelMessages, streamText } from "ai";
+import { mastra } from "@/mastra";
 
 export const maxDuration = 30;
 
 export async function POST(req: Request) {
-  const { messages, system, tools } = await req.json();
+  const { messages } = await req.json();
 
-  const result = streamText({
-    model: openai("gpt-4o"),
-    messages: convertToModelMessages(messages),
-    system,
-    tools: {
-      ...frontendTools(tools),
-      // add backend tools here
-    },
+  // Get the prospector agent from Mastra
+  const agent = mastra.getAgent("prospectorAgent");
+
+  // Stream the agent's response with AI SDK v5 format for assistant-ui compatibility
+  const result = await agent.stream(messages, {
+    format: "aisdk",
   });
 
   return result.toUIMessageStreamResponse();

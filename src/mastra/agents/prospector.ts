@@ -1,11 +1,11 @@
 import { Agent } from '@mastra/core/agent';
 
 import { z } from 'zod';
-import {
-  queryContactsTool,
-  getContactStatsTool,
-  getContactDetailsTool,
-} from '../tools/contact';
+// import {
+//   queryContactsTool,
+//   getContactStatsTool,
+//   getContactDetailsTool,
+// } from '../tools/contact';
 
 import { fastembed } from '@mastra/fastembed';
 import { Memory } from '@mastra/memory';
@@ -222,9 +222,9 @@ and maximize conversion rates through data-driven insights and personalization.`
   model: 'anthropic/claude-sonnet-4-5',
 
   tools: {
-    queryContacts: queryContactsTool,
-    getContactStats: getContactStatsTool,
-    getContactDetails: getContactDetailsTool,
+    // queryContacts: queryContactsTool,
+    // getContactStats: getContactStatsTool,
+    // getContactDetails: getContactDetailsTool,
     ...await composioMcpClient.getTools(),
   },
 
