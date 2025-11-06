@@ -90,7 +90,7 @@ export async function getCurrentOrganization(): Promise<{
     userId,
     orgId,
     orgRole: orgRole || 'org:member',
-    orgSlug,
+    orgSlug: orgSlug ?? null,
   }
 }
 
@@ -218,8 +218,7 @@ export async function updateOrganizationPublicMetadata(
 ): Promise<void> {
   try {
     const clerk = await clerkClient()
-    await clerk.organizations.updateOrganizationMetadata({
-      organizationId,
+    await clerk.organizations.updateOrganizationMetadata(organizationId, {
       publicMetadata: metadata,
     })
   } catch (error) {
@@ -238,8 +237,7 @@ export async function updateOrganizationPrivateMetadata(
 ): Promise<void> {
   try {
     const clerk = await clerkClient()
-    await clerk.organizations.updateOrganizationMetadata({
-      organizationId,
+    await clerk.organizations.updateOrganizationMetadata(organizationId, {
       privateMetadata: metadata,
     })
   } catch (error) {
@@ -262,16 +260,14 @@ export async function updateOrganizationMetadata(
   try {
     // Update public metadata if provided
     if (publicMetadata) {
-      await clerk.organizations.updateOrganizationMetadata({
-        organizationId,
+      await clerk.organizations.updateOrganizationMetadata(organizationId, {
         publicMetadata,
       })
     }
 
     // Update private metadata if provided
     if (privateMetadata) {
-      await clerk.organizations.updateOrganizationMetadata({
-        organizationId,
+      await clerk.organizations.updateOrganizationMetadata(organizationId, {
         privateMetadata,
       })
     }
