@@ -7,9 +7,8 @@ import { z } from 'zod';
 //   getContactDetailsTool,
 // } from '../tools/contact';
 
-import { fastembed } from '@mastra/fastembed';
 import { Memory } from '@mastra/memory';
-import { LibSQLStore, LibSQLVector } from '@mastra/libsql';
+import { LibSQLStore } from '@mastra/libsql';
 import { composioMcpClient } from '../mcp/composio-mcp-client';
 
 /**
@@ -233,17 +232,8 @@ and maximize conversion rates through data-driven insights and personalization.`
       storage: new LibSQLStore({
         url: 'file:../../mastra.db',
       }),
-      vector: new LibSQLVector({
-        connectionUrl: 'file:../../mastra.db',
-      }),
-      embedder: fastembed,
       options: {
         lastMessages: 10,
-        semanticRecall: {
-          topK: 3,
-          messageRange: 2,
-          scope: 'thread',
-        },
         workingMemory: {
           enabled: true,
         },

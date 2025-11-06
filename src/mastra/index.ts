@@ -4,7 +4,7 @@ import { PinoLogger } from '@mastra/loggers';
 // import { financialModelingAgentMcp } from './agents/financial-modeling-mcp';
 import { RuntimeContext } from '@mastra/core/runtime-context';
 import { HTTPException } from 'hono/http-exception';
-import { LibSQLStore, LibSQLVector } from '@mastra/libsql';
+import { LibSQLStore } from '@mastra/libsql';
 import { Composio } from '@composio/core';
 import { MastraProvider } from '@composio/mastra';
 import { prospectorAgent } from './agents/prospector';
@@ -20,11 +20,6 @@ export const mastra = new Mastra({
   storage: new LibSQLStore({
     url: 'file:../../mastra.db',
   }),
-  vectors: {
-    default: new LibSQLVector({
-      connectionUrl: 'file:../../mastra.db',
-    }),
-  },
   logger: new PinoLogger({
     name: 'Mastra',
     level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
