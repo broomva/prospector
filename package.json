@@ -25,6 +25,7 @@
     "@assistant-ui/react": "^0.11.37",
     "@assistant-ui/react-ai-sdk": "^1.1.9",
     "@assistant-ui/react-markdown": "^0.11.4",
+    "@clerk/nextjs": "^6.34.4",
     "@composio/core": "0.2.3",
     "@composio/mastra": "0.2.3",
     "@mastra/ai-sdk": "^0.2.6",
