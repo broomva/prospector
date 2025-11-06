@@ -9,9 +9,14 @@ import { Composio } from '@composio/core';
 import { MastraProvider } from '@composio/mastra';
 import { prospectorAgent } from './agents/prospector';
 import { LangfuseExporter } from "@mastra/langfuse";
+import { researchAgent } from './agents/research';
+import { reportAgent } from './agents/report';
+import { webSummarizationAgent } from './agents/web-summary';
+import { evaluationAgent } from './agents/evaluation';
+import { learningExtractionAgent } from './agents/learning-extraction';
 
 export const mastra = new Mastra({
-  agents: { prospectorAgent },
+  agents: { prospectorAgent, researchAgent, reportAgent, webSummarizationAgent, evaluationAgent, learningExtractionAgent },
   storage: new LibSQLStore({
     url: 'file:../../mastra.db',
   }),
@@ -91,7 +96,7 @@ export const mastra = new Mastra({
   observability: {
     configs: {
       langfuse: {
-        serviceName: "my-service",
+        serviceName: "prospector",
         exporters: [
           new LangfuseExporter({
             publicKey: process.env.LANGFUSE_PUBLIC_KEY!,
