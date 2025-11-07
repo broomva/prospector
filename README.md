@@ -1,6 +1,4 @@
-# Google Sheets Financial Modeling Agent Template
-
-A Mastra template showcasing a financial modeling agent that integrates with Google Sheets through [Composio](https://composio.dev). This agent specializes in creating professional-grade financial models, projections, and analysis directly in Google Sheets.
+# Prospector
 
 ## Overview
 
