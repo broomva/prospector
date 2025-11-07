@@ -1,7 +1,7 @@
 {
-  "name": "template-google-sheets",
+  "name": "prospector",
   "version": "1.0.0",
-  "description": "Google Sheets integration template using Mastra's AI agents. Enables intelligent sheet manipulation, and seamless integration between Google Sheets and AI-powered business logic for spreadsheet automation and analysis.",
+  "description": "Prospector integration using Mastra's AI agents. Enables intelligent contact management, and seamless integration between prospecting workflows and AI-powered business logic for lead generation and analysis.",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
