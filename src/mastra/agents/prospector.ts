@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { Memory } from '@mastra/memory';
 import { LibSQLStore } from '@mastra/libsql';
 import { composioMcpClient } from '../mcp/composio-mcp-client';
+import { pipedreamMcpClient } from '../mcp/pipedream-mcp-client';
 
 /**
  * Agent State Schema - Shared between agent and UI via CopilotKit
@@ -225,6 +226,7 @@ and maximize conversion rates through data-driven insights and personalization.`
     // getContactStats: getContactStatsTool,
     // getContactDetails: getContactDetailsTool,
     ...await composioMcpClient.getTools(),
+    // ...await pipedreamMcpClient?.getTools(),
   },
 
   // Memory configuration for persistent conversation history

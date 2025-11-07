@@ -21,6 +21,7 @@
         "@mastra/mcp": "^0.14.2",
         "@mastra/memory": "^0.15.11",
         "@openrouter/ai-sdk-provider": "1.2.0",
+        "@pipedream/sdk": "^2.2.0",
         "@radix-ui/react-avatar": "^1.1.11",
         "@radix-ui/react-dialog": "^1.1.15",
         "@radix-ui/react-separator": "^1.1.8",
@@ -564,6 +565,8 @@
     "@optimize-lodash/transform": ["@optimize-lodash/transform@3.0.6", "", { "dependencies": { "estree-walker": "^2.0.2", "magic-string": "~0.30.11" } }, "sha512-9+qMSaDpahC0+vX2ChM46/ls6a5Ankqs6RTLrHSaFpm7o1mFanP82e+jm9/0o5D660ueK8dWJGPCXQrBxBNNWA=="],
 
     "@pinojs/redact": ["@pinojs/redact@0.4.0", "", {}, "sha512-k2ENnmBugE/rzQfEcdWHcCY+/FM3VLzH9cYEsbdsoqrvzAKRhUZeRNhAZvB8OitQJ1TBed3yqWtdjzS6wJKBwg=="],
+
+    "@pipedream/sdk": ["@pipedream/sdk@2.2.0", "", {}, "sha512-zDg9VtzVtwMoMPXKHZjRjjSmKh1e3fy2WK7kMoyqhQ36lgPWkJCJLLuLVt5iIFy2EfCkUB3UkIZcDcmHsEbD7Q=="],
 
     "@pkgjs/parseargs": ["@pkgjs/parseargs@0.11.0", "", {}, "sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg=="],
 
