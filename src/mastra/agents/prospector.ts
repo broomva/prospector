@@ -230,18 +230,18 @@ and maximize conversion rates through data-driven insights and personalization.`
   },
 
   // Memory configuration for persistent conversation history
-  memory: new Memory({
-      storage: new LibSQLStore({
-        url: 'file:../../mastra.db',
-      }),
-      options: {
-        lastMessages: 10,
-        workingMemory: {
-          enabled: true,
-        },
-        threads: {
-          generateTitle: true,
-        },
-      },
-    }),
+  // memory: new Memory({
+  //     // storage: new LibSQLStore({
+  //     //   url: 'file:../../mastra.db',
+  //     // }),
+  //     options: {
+  //       lastMessages: 10,
+  //       workingMemory: {
+  //         enabled: true,
+  //       },
+  //       threads: {
+  //         generateTitle: true,
+  //       },
+  //     },
+  //   }),
 });

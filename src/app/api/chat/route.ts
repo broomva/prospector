@@ -4,7 +4,9 @@ import { toAISdkFormat } from "@mastra/ai-sdk";
 import { requireOrganization } from "@/lib/organization";
 import { NextResponse } from "next/server";
 
-export const maxDuration = 30;
+// export const maxDuration = 60; // Increase to 60 seconds (max for Hobby plan)
+// export const runtime = 'edge'; // Use Edge Runtime for better streaming performance
+// using fluid runtime instead edge for max 300 duration
 
 export async function POST(req: Request) {
   try {
