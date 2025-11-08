@@ -10,7 +10,8 @@
     "start": "next start",
     "mastra:dev": "mastra dev",
     "mastra:build": "mastra build",
-    "mastra:start": "mastra start"
+    "mastra:start": "mastra start",
+    "embeddings:generate": "bun run src/mastra/scripts/generate-embeddings.ts"
   },
   "keywords": [],
   "author": "",

@@ -1,4 +1,6 @@
 import { createTool } from '@mastra/core';
+import { embedMany } from 'ai';
+import { openai } from '@ai-sdk/openai';
 import { z } from 'zod';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
@@ -22,6 +24,7 @@ import {
   type StateUpdate,
   type GeneratedOutreach,
 } from '../types/contact';
+import { getVectorStore, CONTACT_VECTOR_CONFIG, contactToText } from '../lib/vector-store';
 
 // Path to the contacts CSV file - use absolute path from project root
 function getContactsPath(): string {
@@ -654,6 +657,468 @@ export const getContactDetailsTool = createTool({
     }
 
     return contact;
+  },
+});
+
+/**
+ * Tool: Search contacts by company names (batch company search)
+ */
+export const searchCompaniesTool = createTool({
+  id: 'search-companies',
+  description: `Search for contacts from multiple companies at once using flexible string matching.
+
+Perfect for queries like:
+- "Find contacts from Stripe, PayPal, and Square"
+- "Show me all SaaS companies with 'tech' in the name"
+- "Get contacts from companies containing 'payment' or 'fintech'"
+
+Uses case-insensitive partial matching by default.`,
+  inputSchema: z.object({
+    companyNames: z.array(z.string()).describe('List of company names to search for (partial matches supported)'),
+    exactMatch: z.boolean().default(false).describe('If true, requires exact company name match (case-insensitive)'),
+    fieldPreset: z.enum(['minimal', 'summary', 'detailed', 'full']).default('summary').describe('Field preset to return'),
+    limit: z.number().default(100).describe('Max contacts to return per company'),
+    includeStats: z.boolean().default(true).describe('Include per-company statistics'),
+  }),
+  outputSchema: z.object({
+    contacts: z.array(ContactSchema.partial()),
+    totalMatched: z.number(),
+    companiesFound: z.array(z.object({
+      searchedFor: z.string(),
+      matchedName: z.string(),
+      contactCount: z.number(),
+    })),
+    companiesNotFound: z.array(z.string()),
+  }),
+  execute: async ({ context }) => {
+    const allContacts = loadContactsFromCSV();
+    const matchedContacts: Contact[] = [];
+    const companiesFound = new Map<string, { matchedName: string; contacts: Contact[] }>();
+    const companiesNotFound: string[] = [];
+
+    // Search for each company
+    for (const searchTerm of context.companyNames) {
+      const searchLower = searchTerm.toLowerCase().trim();
+
+      const matches = allContacts.filter(contact => {
+        if (!contact.companyName) return false;
+
+        const companyLower = contact.companyName.toLowerCase();
+
+        if (context.exactMatch) {
+          return companyLower === searchLower;
+        } else {
+          // Partial match
+          return companyLower.includes(searchLower);
+        }
+      });
+
+      if (matches.length > 0) {
+        // Group by actual company name (in case of partial matches)
+        const grouped = new Map<string, Contact[]>();
+        matches.forEach(contact => {
+          const companyName = contact.companyName!;
+          if (!grouped.has(companyName)) {
+            grouped.set(companyName, []);
+          }
+          grouped.get(companyName)!.push(contact);
+        });
+
+        // Store all matches
+        grouped.forEach((contacts, companyName) => {
+          companiesFound.set(companyName, {
+            matchedName: companyName,
+            contacts: contacts.slice(0, context.limit),
+          });
+          matchedContacts.push(...contacts.slice(0, context.limit));
+        });
+      } else {
+        companiesNotFound.push(searchTerm);
+      }
+    }
+
+    // Project fields
+    const filter: ContactFilter = {
+      fieldPreset: context.fieldPreset,
+      limit: 1000,
+      offset: 0,
+    };
+    const projected = matchedContacts.map(c => projectContactFields(c, filter));
+
+    // Build stats
+    const stats = Array.from(companiesFound.entries()).map(([companyName, data]) => ({
+      searchedFor: context.companyNames.find(s =>
+        companyName.toLowerCase().includes(s.toLowerCase())
+      ) || companyName,
+      matchedName: companyName,
+      contactCount: data.contacts.length,
+    }));
+
+    return {
+      contacts: projected,
+      totalMatched: matchedContacts.length,
+      companiesFound: stats,
+      companiesNotFound,
+    };
+  },
+});
+
+/**
+ * Tool: Search contacts by keywords or technologies (batch enrichment search)
+ */
+export const searchByEnrichmentTool = createTool({
+  id: 'search-by-enrichment',
+  description: `Search contacts by keywords, technologies, or industries using flexible matching.
+
+Perfect for queries like:
+- "Find all contacts working with payments, fintech, or blockchain"
+- "Show me companies using Stripe or PayPal"
+- "Get contacts in SaaS, software, or IT services"
+
+Searches across keywords, technologies, and industry fields.`,
+  inputSchema: z.object({
+    searchTerms: z.array(z.string()).describe('Terms to search for in keywords, technologies, and industry'),
+    searchFields: z.array(z.enum(['keywords', 'technologies', 'industry', 'title', 'companyName']))
+      .default(['keywords', 'technologies', 'industry'])
+      .describe('Which fields to search in'),
+    matchAll: z.boolean().default(false).describe('If true, contact must match ALL terms (AND logic). If false, match ANY term (OR logic)'),
+    fieldPreset: z.enum(['minimal', 'summary', 'detailed', 'full']).default('summary'),
+    limit: z.number().default(100).describe('Max contacts to return'),
+    additionalFilters: z.object({
+      minQualityScore: z.number().optional(),
+      isExecutive: z.boolean().optional(),
+      country: z.string().optional(),
+      contactState: z.string().optional(),
+    }).optional().describe('Additional filters to apply'),
+  }),
+  outputSchema: z.object({
+    contacts: z.array(ContactSchema.partial()),
+    totalMatched: z.number(),
+    matchBreakdown: z.record(z.string(), z.number()).describe('How many contacts matched each search term'),
+  }),
+  execute: async ({ context }) => {
+    const allContacts = loadContactsFromCSV();
+    const searchLower = context.searchTerms.map(s => s.toLowerCase().trim());
+
+    const matchedContacts = allContacts.filter(contact => {
+      // Helper to check if any search term matches a value
+      const matchesValue = (value: string | string[] | undefined): boolean => {
+        if (!value) return false;
+
+        const values = Array.isArray(value) ? value : [value];
+        const valuesLower = values.map(v => v.toLowerCase());
+
+        if (context.matchAll) {
+          // ALL search terms must match
+          return searchLower.every(term =>
+            valuesLower.some(val => val.includes(term))
+          );
+        } else {
+          // ANY search term matches
+          return searchLower.some(term =>
+            valuesLower.some(val => val.includes(term))
+          );
+        }
+      };
+
+      // Check each field
+      const matches: boolean[] = [];
+
+      if (context.searchFields.includes('keywords') && contact.keywords) {
+        matches.push(matchesValue(contact.keywords));
+      }
+
+      if (context.searchFields.includes('technologies') && contact.technologies) {
+        matches.push(matchesValue(contact.technologies));
+      }
+
+      if (context.searchFields.includes('industry') && contact.industry) {
+        matches.push(matchesValue(contact.industry));
+      }
+
+      if (context.searchFields.includes('title') && contact.title) {
+        matches.push(matchesValue(contact.title));
+      }
+
+      if (context.searchFields.includes('companyName') && contact.companyName) {
+        matches.push(matchesValue(contact.companyName));
+      }
+
+      // Must match in at least one field
+      const fieldMatch = matches.some(m => m === true);
+      if (!fieldMatch) return false;
+
+      // Apply additional filters
+      if (context.additionalFilters) {
+        const filters = context.additionalFilters;
+
+        if (filters.minQualityScore !== undefined && contact.qualityScore < filters.minQualityScore) {
+          return false;
+        }
+
+        if (filters.isExecutive !== undefined && contact.isExecutive !== filters.isExecutive) {
+          return false;
+        }
+
+        if (filters.country && contact.country !== filters.country) {
+          return false;
+        }
+
+        if (filters.contactState && contact.contactState !== filters.contactState) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+
+    // Calculate match breakdown
+    const matchBreakdown: Record<string, number> = {};
+    context.searchTerms.forEach(term => {
+      const termLower = term.toLowerCase();
+      matchBreakdown[term] = matchedContacts.filter(contact => {
+        const checkValue = (value: string | string[] | undefined): boolean => {
+          if (!value) return false;
+          const values = Array.isArray(value) ? value : [value];
+          return values.some(v => v.toLowerCase().includes(termLower));
+        };
+
+        return context.searchFields.some(field => {
+          switch (field) {
+            case 'keywords': return checkValue(contact.keywords);
+            case 'technologies': return checkValue(contact.technologies);
+            case 'industry': return checkValue(contact.industry);
+            case 'title': return checkValue(contact.title);
+            case 'companyName': return checkValue(contact.companyName);
+            default: return false;
+          }
+        });
+      }).length;
+    });
+
+    // Apply limit and project fields
+    const limited = matchedContacts.slice(0, context.limit);
+    const filter: ContactFilter = {
+      fieldPreset: context.fieldPreset,
+      limit: 1000,
+      offset: 0,
+    };
+    const projected = limited.map(c => projectContactFields(c, filter));
+
+    return {
+      contacts: projected,
+      totalMatched: matchedContacts.length,
+      matchBreakdown,
+    };
+  },
+});
+
+/**
+ * Tool: Get unique values for a field (useful for understanding data distribution)
+ */
+export const getUniqueValuesTool = createTool({
+  id: 'get-unique-values',
+  description: `Get all unique values for a specific field, useful for understanding what data is available.
+
+Use this to discover:
+- All company names in the database
+- All industries represented
+- All countries/cities available
+- All technologies or keywords present
+
+Returns sorted by frequency (most common first).`,
+  inputSchema: z.object({
+    field: z.enum([
+      'companyName', 'industry', 'country', 'city', 'seniority',
+      'companySizeBucket', 'stage', 'contactState', 'emailStatus'
+    ]).describe('Field to get unique values for'),
+    limit: z.number().default(100).describe('Max unique values to return'),
+    minOccurrences: z.number().default(1).describe('Only return values that appear at least this many times'),
+  }),
+  outputSchema: z.object({
+    field: z.string(),
+    uniqueValues: z.array(z.object({
+      value: z.string(),
+      count: z.number(),
+      percentage: z.number(),
+    })),
+    totalUnique: z.number(),
+    totalContacts: z.number(),
+  }),
+  execute: async ({ context }) => {
+    const contacts = loadContactsFromCSV();
+    const valueCounts = new Map<string, number>();
+
+    // Count occurrences
+    contacts.forEach(contact => {
+      const value = (contact as any)[context.field];
+      if (value !== undefined && value !== null && value !== '') {
+        const stringValue = String(value);
+        valueCounts.set(stringValue, (valueCounts.get(stringValue) || 0) + 1);
+      }
+    });
+
+    // Filter by min occurrences and sort by frequency
+    const filtered = Array.from(valueCounts.entries())
+      .filter(([_, count]) => count >= context.minOccurrences)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, context.limit);
+
+    const uniqueValues = filtered.map(([value, count]) => ({
+      value,
+      count,
+      percentage: Math.round((count / contacts.length) * 1000) / 10,
+    }));
+
+    return {
+      field: context.field,
+      uniqueValues,
+      totalUnique: valueCounts.size,
+      totalContacts: contacts.length,
+    };
+  },
+});
+
+/**
+ * Tool: Semantic vector search for contacts
+ */
+export const vectorSearchContactsTool = createTool({
+  id: 'vector-search-contacts',
+  description: `Perform semantic vector search to find contacts based on natural language queries.
+
+Perfect for queries like:
+- "Find contacts similar to fintech payment companies"
+- "Show me prospects working on AI-powered financial services"
+- "Get contacts in the travel booking space"
+- "Find CFOs at companies doing cross-border payments"
+
+Uses semantic similarity instead of exact keyword matching, so it can understand context and intent.
+
+IMPORTANT: You must run the embedding generation script first:
+  bun run embeddings:generate
+
+This searches across contact titles, companies, industries, keywords, and technologies.
+
+Note: Uses OpenAI text-embedding-3-small model (requires OPENAI_API_KEY env var).`,
+  inputSchema: z.object({
+    query: z.string().describe('Natural language search query describing the contacts you want to find'),
+    topK: z.number().default(20).describe('Number of similar contacts to return'),
+    minScore: z.number().default(0.3).describe('Minimum similarity score (0-1). Higher = more similar. Default 0.3 filters weak matches.'),
+    fieldPreset: z.enum(['minimal', 'summary', 'detailed', 'full']).default('summary'),
+    additionalFilters: z.object({
+      minQualityScore: z.number().optional(),
+      isExecutive: z.boolean().optional(),
+      country: z.string().optional(),
+      contactState: z.string().optional(),
+    }).optional().describe('Additional filters to apply after vector search'),
+  }),
+  outputSchema: z.object({
+    contacts: z.array(ContactSchema.partial()),
+    totalMatched: z.number(),
+    searchQuery: z.string(),
+    avgSimilarityScore: z.number(),
+  }),
+  execute: async ({ context }) => {
+    try {
+      // Generate embedding for the query
+      const { embeddings } = await embedMany({
+        model: openai.embedding('text-embedding-3-small'), // Must match the model used in generation (1536-dim)
+        values: [context.query],
+      });
+
+      const queryVector = embeddings[0];
+
+      // Query vector store
+      const vectorStore = getVectorStore();
+      const vectorResults = await vectorStore.query({
+        indexName: CONTACT_VECTOR_CONFIG.indexName,
+        queryVector,
+        topK: context.topK,
+        minScore: context.minScore,
+        includeVector: false,
+      });
+
+      // Load full contact data
+      const allContacts = loadContactsFromCSV();
+      const contactMap = new Map(allContacts.map(c => [c.id, c]));
+
+      // Match vector results to contacts
+      let matchedContacts = vectorResults
+        .map(result => {
+          if (!result.metadata) return null;
+
+          const contact = contactMap.get(result.metadata.contactId as string);
+          if (!contact) return null;
+
+          // Store similarity score
+          (contact as any)._similarityScore = result.score;
+
+          return contact;
+        })
+        .filter((c): c is Contact => c !== null);
+
+      // Apply additional filters
+      if (context.additionalFilters) {
+        const filters = context.additionalFilters;
+
+        matchedContacts = matchedContacts.filter(contact => {
+          if (filters.minQualityScore !== undefined && contact.qualityScore < filters.minQualityScore) {
+            return false;
+          }
+
+          if (filters.isExecutive !== undefined && contact.isExecutive !== filters.isExecutive) {
+            return false;
+          }
+
+          if (filters.country && contact.country !== filters.country) {
+            return false;
+          }
+
+          if (filters.contactState && contact.contactState !== filters.contactState) {
+            return false;
+          }
+
+          return true;
+        });
+      }
+
+      // Calculate average similarity
+      const avgSimilarityScore = matchedContacts.length > 0
+        ? matchedContacts.reduce((sum, c) => sum + ((c as any)._similarityScore || 0), 0) / matchedContacts.length
+        : 0;
+
+      // Project fields
+      const filter: ContactFilter = {
+        fieldPreset: context.fieldPreset,
+        limit: 1000,
+        offset: 0,
+      };
+      const projected = matchedContacts.map(c => {
+        const proj = projectContactFields(c, filter);
+        // Include similarity score in results
+        (proj as any).similarityScore = (c as any)._similarityScore;
+        return proj;
+      });
+
+      return {
+        contacts: projected,
+        totalMatched: matchedContacts.length,
+        searchQuery: context.query,
+        avgSimilarityScore: Math.round(avgSimilarityScore * 1000) / 1000,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+
+      // Check if it's because embeddings haven't been generated yet
+      if (message.includes('Table not found') || message.includes('no such table')) {
+        throw new Error(
+          `Vector index not found. Please run the embedding generation script first:\n` +
+          `  bun run src/mastra/scripts/generate-embeddings.ts`
+        );
+      }
+
+      throw new Error(`Vector search failed: ${message}`);
+    }
   },
 });
 
