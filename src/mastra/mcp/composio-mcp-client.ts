@@ -18,7 +18,7 @@ import { MCPClient } from '@mastra/mcp';
 export const composioMcpClient = new MCPClient({
   id: 'composio-mcp-client',
   servers: {
-    googleSheets: {
+    composio: {
       url: new URL(
         process.env.COMPOSIO_MCP_SSE_URL ||
         'https://backend.composio.dev/v3/mcp/c69416e3-cca8-4825-a67e-3ab8f35b00cc/mcp?user_id=pg-test-24bb244a-9a5e-4047-89e3-12e83f0b4f8d'

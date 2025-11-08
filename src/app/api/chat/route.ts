@@ -39,7 +39,7 @@ export async function POST(req: Request) {
     // - thread: Unique conversation ID (client-generated or default to userId)
     // - resource: Organization ID (all threads in org share this resource context)
     const memoryContext = {
-      thread: threadId || `thread-${userId}-${Date.now()}`, // Unique per conversation
+      thread: threadId || `thread-${userId}`, //-${Date.now()}`, // Unique per conversation
       resource: orgId, // Shared across org's conversations
     };
 

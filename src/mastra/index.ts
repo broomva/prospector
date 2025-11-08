@@ -17,9 +17,9 @@ import { learningExtractionAgent } from './agents/learning-extraction';
 
 export const mastra = new Mastra({
   agents: { prospectorAgent, researchAgent, reportAgent, webSummarizationAgent, evaluationAgent, learningExtractionAgent },
-  // storage: new LibSQLStore({
-  //   url: 'file:../../mastra.db',
-  // }),
+  storage: new LibSQLStore({
+    url: ':memory:',
+  }),
   logger: new PinoLogger({
     name: 'Mastra',
     level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
